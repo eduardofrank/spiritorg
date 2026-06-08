@@ -1,4 +1,12 @@
 base: 'https://spirit.ddev.site/'
+dependencies:
+  - bootstrap-package/full
+  - georgringer/news
+  - georgringer/news-twb5
+  - netresearch/rte-ckeditor-image
+  - typo3/form
+  - typo3/seo-sitemap
+  - eduardo-frank/bca13
 errorHandling:
   -
     errorCode: 404
