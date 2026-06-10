@@ -29,7 +29,7 @@
 		  }
 	},
     "require": {
-		"eduardo-frank/bca12": "@dev",
+		"eduardo-frank/bca13": "@dev",
 		"georgringer/news": "^13.0",
 		"georgringer/numbered-pagination": "^2.1.0",
 		"helhum/typo3-console": "^9.0",
@@ -49,7 +49,6 @@
 		"typo3/cms-filelist": "^13.4",
 		"typo3/cms-filemetadata": "^13.4",
 		"typo3/cms-fluid": "^13.4",
-		"typo3/cms-fluid-styled-content": "^13.4",
 		"typo3/cms-form": "^13.4",
 		"typo3/cms-frontend": "^13.4",
 		"typo3/cms-impexp": "^13.4",

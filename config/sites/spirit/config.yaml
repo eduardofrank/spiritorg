@@ -6,6 +6,10 @@ dependencies:
   - netresearch/rte-ckeditor-image
   - typo3/form
   - typo3/seo-sitemap
+  - in2code/powermail-marketing
+  - in2code/powermail-main
+  - nitsan/ns-disqus-comments
+  - in2code/powermail-styling
   - eduardo-frank/bca13
 errorHandling:
   -
