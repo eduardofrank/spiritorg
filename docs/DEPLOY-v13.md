@@ -11,19 +11,18 @@ The site package `packages/bca13` is a **git submodule** (`eduardofrank/bca13`);
 The local DB is **ported to production** (full `ddev export-db` → `mysql < dump`), so the
 v12→v13 DB migrations travel with the dump — no per-row SQL on prod (see step 5).
 
-> ⚠️ **BLOCKER — site base URL.** `config/sites/spirit/config.yaml` hardcodes
-> `base: 'https://spirit.ddev.site/'` (the DDEV URL). The base is **file-based, not in the
-> DB**, so the DB port does not fix it — deploying as-is points production at the DDEV URL.
-> Make the base environment-aware **before** deploying (and test locally), e.g.:
+> ⚠️ **Site base URL — change on the server before first frontend load** (same manual step
+> as the Cloudways procedure). `config/sites/spirit/config.yaml` ships
+> `base: 'https://spirit.ddev.site/'` (the DDEV URL); the base is **file-based, not in the
+> DB**, so the DB port does not fix it. After deploying the code and importing the DB, edit
+> on the server:
 > ```yaml
+> # config/sites/spirit/config.yaml
 > base: 'https://www.spirit.org/'
-> baseVariants:
->   -
->     base: 'https://spirit.ddev.site/'
->     condition: 'applicationContext == "Development"'   # DDEV runs in Development context
 > ```
-> Then `ddev exec vendor/bin/typo3 cache:flush` and confirm local still resolves to the
-> DDEV URL.
+> then flush caches, before the first frontend request. Note: `config.yaml` is git-tracked,
+> so each subsequent `git pull` re-introduces the DDEV base — re-apply this edit after every
+> deploy (or stash/restore it).
 
 ---
 
@@ -101,12 +100,27 @@ mysql -u USER -p DBNAME < spirit-prod.sql
 > `database:updateschema` / `upgrade:run` in step 4 are belt-and-suspenders — run them, but
 > they should report nothing to do.
 
-## 6. Final cache flush + asset rebuild
+## 6. Set production base URL, then final cache flush + asset rebuild
+
+Apply the base-URL edit from the ⚠️ note above (`config/sites/spirit/config.yaml` →
+`https://www.spirit.org/`) **before the first frontend request**, then:
 
 ```bash
 vendor/bin/typo3 cache:flush
 rm -rf var/cache/* public_html/typo3temp/assets/*
+
+# Processed image variants are environment-specific (files live in fileadmin/_processed_,
+# per server). The imported dump carries sys_file_processedfile records that reference the
+# LOCAL machine's processed files, which don't exist on prod → broken images. Clear them so
+# prod regenerates from its own originals:
+vendor/bin/typo3 database:query "DELETE FROM sys_file_processedfile;" 2>/dev/null || \
+  mysql -u USER -p DBNAME -e "DELETE FROM sys_file_processedfile;"
+rm -rf public_html/fileadmin/_processed_/*
+vendor/bin/typo3 cache:flush
 ```
+> The original cause (stale **empty-identifier** `sys_file_processedfile` records from the DB
+> import making large images serve the raw original, e.g. a `.tif`, → broken-image icon) is
+> fully reset by the `DELETE` above.
 
 ## 7. Verify (then lift maintenance)
 
