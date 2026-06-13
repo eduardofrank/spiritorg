@@ -5,8 +5,20 @@ on the host**, and `mysql` CLI available. Docroot is **`public_html/`** (not `pu
 Production is still on TYPO3 **v12**, so this deploy runs the full **v12 → v13 upgrade on
 the server** — not a small patch.
 
-The site package `packages/bca13` is a **git submodule** (`eduardofrank/bca13`); a plain
-`git pull` does NOT update it.
+**Production is NOT a git repo yet** — its home dir is the app root (holds `composer.json`,
+`config/`, `public_html/`, `vendor/`) with the running v12 install. This deploy *adopts*
+that existing directory into git for the first time (step 3), then upgrades it.
+
+The site package `packages/bca13` is a **git submodule** (`eduardofrank/bca13`); the parent
+repo's `.gitmodules` provides the URL so `git submodule update --init --recursive` can
+populate it. A plain pull/checkout alone does NOT fetch submodule contents.
+
+**Safety — what adoption will NOT touch** (gitignored, so never in the committed tree):
+`vendor/`, `var/`, `public_html/{_assets,typo3,typo3conf/ext,typo3temp,fileadmin}/`, and
+`config/system/settings.php`. Prod's `.htaccess` and `config/system/additional.php` are
+untracked-and-not-in-the-repo, so they're left alone too. The force-checkout only
+overwrites **v12 tracked files** (index.php, composer.*, config.yaml, icons) with their v13
+versions — which is the point.
 
 The local DB is **ported to production** (full `ddev export-db` → `mysql < dump`), so the
 v12→v13 DB migrations travel with the dump — no per-row SQL on prod (see step 5).
@@ -31,9 +43,11 @@ v12→v13 DB migrations travel with the dump — no per-row SQL on prod (see ste
 Over SSH, in the site root (the dir containing `composer.json`, with `public_html/` as docroot):
 
 ```bash
+cd ~                           # app root (has composer.json, public_html/, config/, vendor/)
 php -v                         # must be PHP 8.2+ — switch via cPanel PHP selector if not
 vendor/bin/typo3 --version     # confirm prod is v12
-git status && git remote -v    # clean tree + remote = eduardofrank/spiritorg
+ls -a | grep -c '^\.git$'      # expect 0 — confirms prod is not yet a git repo
+ls -d packages/* 2>/dev/null   # note existing v12 package dir(s), e.g. packages/bca12 (moved aside in step 3)
 ```
 
 Confirm prod DB matches local assumptions **before** the cleanup in step 5 (prod data may
@@ -62,13 +76,37 @@ settings, and the encryption key. The deploy never touches it; just keep a backu
 Put up a maintenance page (cPanel, or a temporary holding `index.html`). The upgrade has a
 window where the site will not render.
 
-## 3. Deploy code
+## 3. Deploy code — adopt the existing install into git, then check out v13
+
+First-time adoption of the running directory. Do this from the app root (`cd ~`).
 
 ```bash
-git pull origin main
-git submodule update --init --recursive        # CRITICAL — populates packages/bca13
-composer install --no-dev --optimize-autoloader # upgrades core->13.4, BS->15, installs bca13, drops FSC
+# 3a. The repo tracks packages/ as submodules; prod has them as PLAIN v12 files which would
+#     collide with the gitlinks. Move the whole packages/ dir aside (it's recreated in 3d).
+[ -d packages ] && mv packages packages.v12.bak
+
+# 3b. Initialise git in place and point it at the remote (nothing is overwritten yet).
+git init
+git remote add origin https://github.com/eduardofrank/spiritorg.git
+git fetch origin
+
+# 3c. OPTIONAL safety inspect: see exactly what differs before any file is written.
+git reset origin/main          # mixed: sets index to v13, leaves the working tree untouched
+git status                     # gitignored env files (settings.php, fileadmin, vendor…) show as untracked = safe
+
+# 3d. Check out v13 (force-overwrites only the v12 *tracked* files), then populate submodules.
+git checkout -f -b main origin/main
+git branch --set-upstream-to=origin/main main
+git submodule update --init --recursive        # CRITICAL — clones bca13 (+bca12) at the pinned commits
+
+# 3e. Build v13 dependencies (regenerates vendor/, drops fluid-styled-content, etc.)
+composer install --no-dev --optimize-autoloader
 ```
+
+> If 3d's `git checkout -f` reports an untracked file would be overwritten that you need to
+> keep, stop and copy it aside first. The known env files are all gitignored, so this should
+> only ever be plain v12 code being replaced. `packages.v12.bak/` is your rollback for the
+> old site package; delete it only once prod is confirmed stable.
 
 ## 4. TYPO3 upgrade steps
 
