@@ -107,8 +107,17 @@ git branch --set-upstream-to=origin/main main
 git submodule update --init --recursive        # CRITICAL — clones bca13 at the pinned commit
 
 # 3e. Build v13 dependencies (regenerates vendor/, drops fluid-styled-content, etc.)
-composer install --no-dev --optimize-autoloader
+#     --ignore-platform-req=ext-redis: prod has a stale, UNUSED phpredis 5.3.7 that
+#     symfony/cache conflicts with (<6.1). No Redis cache backend is configured, so ignoring
+#     it is safe. Scope to ext-redis only (don't use the blanket --ignore-platform-reqs).
+composer install --no-dev --optimize-autoloader --ignore-platform-req=ext-redis
 ```
+
+> **CLI PHP gotcha:** bare `php` on this host is 8.2.31, but `config.platform.php = "8.3"`
+> makes `vendor/composer/platform_check.php` require ≥8.3, so `vendor/bin/typo3` fails under
+> the default CLI. The web runs 8.4.21. Run every `vendor/bin/typo3` (and composer, if it
+> hits the same) with the 8.4 binary — set once:
+> `PHP84=/opt/cpanel/ea-php84/root/usr/bin/php` and prefix commands with `$PHP84`.
 
 > If 3d's `git checkout -f` reports an untracked file would be overwritten that you need to
 > keep, stop and copy it aside first. The known env files are all gitignored, so this should
@@ -138,9 +147,10 @@ Notes:
 ## 5. TYPO3 maintenance (against the now-v13 DB)
 
 ```bash
-vendor/bin/typo3 extension:setup                      # register extensions against the v13 DB
-vendor/bin/typo3 database:updateschema "*.add,*.change" # align schema drift — should report ~nothing
-vendor/bin/typo3 cache:flush
+PHP84=/opt/cpanel/ea-php84/root/usr/bin/php             # see CLI PHP gotcha in step 3
+$PHP84 vendor/bin/typo3 extension:setup                 # register extensions against the v13 DB
+$PHP84 vendor/bin/typo3 database:updateschema "*.add,*.change" # align schema drift — should report ~nothing
+$PHP84 vendor/bin/typo3 cache:flush
 ```
 Skip `upgrade:run` — the wizards already ran locally and their "done" flags are in the
 imported DB. `fluid-styled-content` needs no manual step — it's already out of `composer.lock`.
@@ -155,17 +165,15 @@ Apply the base-URL edit from the ⚠️ note above (`config/sites/spirit/config.
 `https://www.spirit.org/`) **before the first frontend request**, then:
 
 ```bash
-vendor/bin/typo3 cache:flush
-rm -rf var/cache/* public_html/typo3temp/assets/*
-
 # Processed image variants are environment-specific (files live in fileadmin/_processed_,
 # per server). The imported dump carries sys_file_processedfile records that reference the
 # LOCAL machine's processed files, which don't exist on prod → broken images. Clear them so
 # prod regenerates from its own originals:
-vendor/bin/typo3 database:query "DELETE FROM sys_file_processedfile;" 2>/dev/null || \
-  mysql -u USER -p DBNAME -e "DELETE FROM sys_file_processedfile;"
+mysql -u USER -p DBNAME -e "DELETE FROM sys_file_processedfile;"
 rm -rf public_html/fileadmin/_processed_/*
-vendor/bin/typo3 cache:flush
+
+$PHP84 vendor/bin/typo3 cache:flush
+rm -rf var/cache/* public_html/typo3temp/assets/*
 ```
 > The original cause (stale **empty-identifier** `sys_file_processedfile` records from the DB
 > import making large images serve the raw original, e.g. a `.tif`, → broken-image icon) is
