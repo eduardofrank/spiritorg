@@ -1,0 +1,6 @@
+[submodule "packages/bca12"]
+	path = packages/bca12
+	url = https://github.com/eduardofrank/bca12.git
+[submodule "packages/bca13"]
+	path = packages/bca13
+	url = https://github.com/eduardofrank/bca13.git

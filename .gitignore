@@ -18,4 +18,5 @@
 node_modules/
 config/system/settings.php
 .DS_Store
+*.swp
 
