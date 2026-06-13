@@ -9,9 +9,16 @@ the server** — not a small patch.
 `config/`, `public_html/`, `vendor/`) with the running v12 install. This deploy *adopts*
 that existing directory into git for the first time (step 3), then upgrades it.
 
-The site package `packages/bca13` is a **git submodule** (`eduardofrank/bca13`); the parent
-repo's `.gitmodules` provides the URL so `git submodule update --init --recursive` can
-populate it. A plain pull/checkout alone does NOT fetch submodule contents.
+**Site-package model — `path` repo, populated by the submodule.** The committed
+`composer.json` requires only `eduardo-frank/bca13: "@dev"` via a **`path` repository**
+(`packages/bca13`). So the install order on prod is: `git submodule update --init` *fills*
+`packages/bca13` (the parent repo's `.gitmodules` supplies the URL), then `composer install`
+reads the package from that path. A plain pull/checkout alone does NOT fetch submodule
+contents.
+
+Note: prod's *current* (v12) `composer.json` pulls the old `bca12` package via a **VCS** repo
+into `vendor/`, and prod has **no `packages/` dir**. The v13 `composer.json` does not require
+`bca12` at all — it's retired — so nothing on prod depends on it after the checkout.
 
 **Safety — what adoption will NOT touch** (gitignored, so never in the committed tree):
 `vendor/`, `var/`, `public_html/{_assets,typo3,typo3conf/ext,typo3temp,fileadmin}/`, and
@@ -81,8 +88,8 @@ window where the site will not render.
 First-time adoption of the running directory. Do this from the app root (`cd ~`).
 
 ```bash
-# 3a. The repo tracks packages/ as submodules; prod has them as PLAIN v12 files which would
-#     collide with the gitlinks. Move the whole packages/ dir aside (it's recreated in 3d).
+# 3a. Prod has no packages/ dir (the v12 bca12 package came from a Composer VCS repo into
+#     vendor/). This guard is a no-op on prod; it only matters if a stray packages/ exists.
 [ -d packages ] && mv packages packages.v12.bak
 
 # 3b. Initialise git in place and point it at the remote (nothing is overwritten yet).
