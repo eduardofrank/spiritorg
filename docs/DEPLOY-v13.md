@@ -104,7 +104,7 @@ git status                     # gitignored env files (settings.php, fileadmin, 
 # 3d. Check out v13 (force-overwrites only the v12 *tracked* files), then populate submodules.
 git checkout -f -b main origin/main
 git branch --set-upstream-to=origin/main main
-git submodule update --init --recursive        # CRITICAL — clones bca13 (+bca12) at the pinned commits
+git submodule update --init --recursive        # CRITICAL — clones bca13 at the pinned commit
 
 # 3e. Build v13 dependencies (regenerates vendor/, drops fluid-styled-content, etc.)
 composer install --no-dev --optimize-autoloader
@@ -115,31 +115,35 @@ composer install --no-dev --optimize-autoloader
 > only ever be plain v12 code being replaced. `packages.v12.bak/` is your rollback for the
 > old site package; delete it only once prod is confirmed stable.
 
-## 4. TYPO3 upgrade steps
+## 4. Import the local database (carries all migrations)
+
+Because the DB is **ported** (not migrated in place), import it **before** the TYPO3
+maintenance commands — running upgrade wizards on the old v12 DB right before overwriting it
+is wasteful and can error. The dump already contains every v12→v13 DB change: the form
+`EXT:bca12→bca13` `persistenceIdentifier` fix, the Disqus `list_type→CType` migration, the
+`sys_template` `clear=3` cleanup, the map-link fix, and the upgrade-wizard "done" flags.
 
 ```bash
-vendor/bin/typo3 extension:setup
-vendor/bin/typo3 database:updateschema "*.add,*.change"
-vendor/bin/typo3 upgrade:run
+# local dump already exists (deploy.sql from `ddev export-db`). Upload it to the server, then:
+mysql -u USER -p DBNAME < deploy.sql            # REPLACES the prod DB (backup taken in step 1)
+```
+
+Notes:
+- `ddev export-db` dumps tables only (no CREATE DATABASE/USE), so it imports into the existing
+  prod DB. For a fully clean slate you may drop+recreate the DB first, but it isn't required.
+- The imported DB was used with the **local** encryption key; prod keeps its own
+  `settings.php` (and key). Effect is harmless — BE sessions reset, so **log into the prod
+  backend with your LOCAL admin credentials** afterwards. No DB-stored secrets depend on the key.
+
+## 5. TYPO3 maintenance (against the now-v13 DB)
+
+```bash
+vendor/bin/typo3 extension:setup                      # register extensions against the v13 DB
+vendor/bin/typo3 database:updateschema "*.add,*.change" # align schema drift — should report ~nothing
 vendor/bin/typo3 cache:flush
 ```
-
-## 5. Import the local database (carries all migrations)
-
-The local DB is being ported to production, so the v12→v13 DB changes are **already baked
-into the dump** — no per-row SQL on prod. That dump already contains: the form
-`EXT:bca12→bca13` `persistenceIdentifier` fix, the Disqus `list_type→CType` migration, the
-`sys_template` `clear=3` cleanup, and the upgrade-wizard "done" flags.
-
-```bash
-# On local:
-ddev export-db --gzip=false --file=spirit-prod.sql
-# Upload it, then on the server — this REPLACES the prod DB (backup taken in step 1):
-mysql -u USER -p DBNAME < spirit-prod.sql
-```
-
-`fluid-styled-content` needs no manual step — it is already out of `composer.lock`, so
-`composer install` does not reinstall it.
+Skip `upgrade:run` — the wizards already ran locally and their "done" flags are in the
+imported DB. `fluid-styled-content` needs no manual step — it's already out of `composer.lock`.
 
 > Because the dump is a full v13 DB at the same schema as the deployed code, the
 > `database:updateschema` / `upgrade:run` in step 4 are belt-and-suspenders — run them, but
